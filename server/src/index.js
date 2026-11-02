@@ -67,7 +67,7 @@ app.post('/api/v1/mysteries/generate', async (req, res) => {
     const ai = new GoogleGenAI({ apiKey: geminiApiKey });
     const { scenario, difficulty, suspectCount, category } = parsed.data;
     const prompt = `Create a logically consistent, entirely fictional detective investigation. Return only JSON matching this schema: {"caseTitle":string,"difficulty":string,"category":string,"caseOverview":{"description":string,"location":string,"incidentDate":string,"incidentTime":string,"victim":{"name":string,"age":number,"occupation":string}},"suspects":[{"id":string,"name":string,"age":number,"occupation":string,"relationshipToVictim":string,"statement":string,"motive":string,"avatarPrompt":string}],"timeline":[{"time":string,"event":string}],"evidence":[{"id":string,"type":string,"title":string,"description":string,"timestamp":string,"relatedSuspects":[string],"content":object}],"solution":{"culpritId":string,"motive":string,"method":string,"explanation":string,"keyEvidenceIds":[string],"redHerrings":[string]}}. Requirements: exactly ${suspectCount} suspects with IDs S001 onward; one culprit who is a suspect; at least 3 unique evidence items with IDs E001 onward; at least 3 existing evidence IDs support the answer; dates and timeline agree; difficulty ${difficulty} controls clue subtlety; category ${category}; don't contradict established facts; keep chats, reports, and all case details fictional. User premise: ${scenario}`;
-    const response = await ai.models.generateContent({ model: process.env.GEMINI_MODEL || 'gemini-2.5-flash', contents: prompt, config: { responseMimeType: 'application/json' } });
+    const response = await ai.models.generateContent({ model: process.env.GEMINI_MODEL || 'gemini-3.8-flash', contents: prompt, config: { responseMimeType: 'application/json' } });
     const data = caseShape.parse(JSON.parse(response.text));
     const suspectIds = data.suspects.map((s) => s.id);
     const evidenceIds = data.evidence.map((e) => e.id);
@@ -76,7 +76,14 @@ app.post('/api/v1/mysteries/generate', async (req, res) => {
     return res.status(201).json({ success: true, data: publicMystery(saved) });
   } catch (error) {
     console.error('Mystery generation failed:', error.message);
-    return res.status(502).json({ success: false, message: error.message.includes('consistency checks') ? error.message : 'The case could not be generated or validated. Please try again.' });
+    const message = String(error?.message || '');
+    if (error?.code === 404 || error?.status === 404 || /model .*not found|no longer available/i.test(message)) {
+      return res.status(502).json({ success: false, message: 'The configured Gemini model is unavailable for this API key. Set GEMINI_MODEL to gemini-3.8-flash and restart the backend.' });
+    }
+    if (error?.name === 'ZodError' || error instanceof SyntaxError || /consistency checks/i.test(message)) {
+      return res.status(502).json({ success: false, message: 'Gemini returned case data that failed validation. Try generating again; if it repeats, simplify the premise.' });
+    }
+    return res.status(502).json({ success: false, message: 'Gemini could not generate the case. Check the backend log for the provider error, then try again.' });
   }
 });
 
@@ -136,3 +143,4 @@ app.post('/api/v1/investigations/:id/verdict', async (req, res) => {
 
 app.listen(port, () => console.log(`AL Mystery Room API listening on http://localhost:${port}`));
 if (process.env.MONGODB_URI && !process.env.MONGODB_URI.startsWith('your_')) mongoose.connect(process.env.MONGODB_URI).then(() => console.log('MongoDB connected')).catch((err) => console.error('MongoDB connection failed:', err.message));
+
