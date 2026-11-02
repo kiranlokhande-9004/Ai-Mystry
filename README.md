@@ -12,6 +12,12 @@ An AI-powered detective game. Give the app a fictional case premise, investigate
 - Store mysteries and investigation progress in MongoDB.
 - Keep the culprit and solution on the backend until a verdict is submitted.
 
+## Deploying on Netlify
+
+On Netlify, the API runs as Netlify Functions (`netlify/functions/`). Data is stored in Netlify Database (Postgres), and case generation uses Gemini through Netlify AI Gateway, so you don't need a MongoDB URI or Gemini API key. Database migrations in `netlify/database/migrations/` are applied automatically on deploy. Case generation runs in a background function, and the frontend polls `GET /api/v1/mysteries/jobs/:jobId` until the case is ready. Run it locally with `netlify dev`.
+
+The Express server in `server/` is still there for local development with MongoDB.
+
 ## Tech stack
 
 - Frontend: React, Vite, React Router, Lucide
